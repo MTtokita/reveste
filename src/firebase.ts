@@ -1,8 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAnalytics } from "firebase/analytics";
+import { getFirestore } from "firebase/firestore"; 
+import { getAuth } from "firebase/auth"; 
 
-// Substitua pelos seus dados reais do Firebase Console:
 const firebaseConfig = {
   apiKey: "AIzaSyBSB6aSocSgciQxKz5-tXf59feTFb0Qx9E",
   authDomain: "reveste-9b0ed.firebaseapp.com",
@@ -13,9 +13,10 @@ const firebaseConfig = {
   measurementId: "G-Z90P6D03M3"
 };
 
-// Inicializa o Firebase
+// Inicializa o aplicativo Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
-// Exporta os serviços prontos para uso
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Exportações essenciais que o seu projeto usa:
+export const db = getFirestore(app); 
+export const auth = getAuth(app);    

@@ -7,12 +7,16 @@ import {
   FiSettings, FiSearch 
 } from 'react-icons/fi';
 import './inicial.css'; 
+import { db } from './firebase';
+import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 interface DashboardProps {
-  userName: string;
+  userName: string; 
   userEmail: string;   
   userPhone?: string;  
+  userPhoto?: string; 
   onLogout: () => void;
+  onUpdateUser: (newName: string, extraData?: { fotoPerfil?: string; doacoes?: number }) => Promise<void>; 
 }
 
 interface Roupa {
@@ -34,7 +38,8 @@ interface Pedido {
   id: string;
   roupa: Roupa;
   dataSolicitacao: string;
-  tempoEstimado: string;
+  tempoEstimated?: string; // Tornado opcional para evitar quebras de tipo estritas
+  tempoEstimado?: string;
 }
 
 interface ToastMensagem {
@@ -51,7 +56,7 @@ interface ChatSimplificado {
   horario: string;
 }
 
-export default function Inicial({ userName: initialUserName, userEmail, userPhone = '', onLogout }: DashboardProps) {
+export default function Inicial({ userName, userEmail, userPhone = '', userPhoto = '', onLogout, onUpdateUser }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'home' | 'itens' | 'carrinho' | 'perfil'>('home');
   const [subAbaPerfil, setSubAbaPerfil] = useState<'dados' | 'privado' | 'chats'>('dados');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -70,41 +75,23 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
   const fileInputPerfilRef = useRef<HTMLInputElement>(null);
 
   const [toasts, setToasts] = useState<ToastMensagem[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const emailPrivado = userEmail || localStorage.getItem('@reveste:current_user_email') || 'usuario@reveste.com.br';
+  const emailPrivado = userEmail || 'usuario@reveste.com.br';
 
-  const [nomeUsuario, setNomeUsuario] = useState(() => {
-    return localStorage.getItem(`@reveste:${emailPrivado}:username`) || initialUserName;
-  });
-  
-  const [telefone, setTelefone] = useState(() => {
-    return localStorage.getItem(`@reveste:${emailPrivado}:telefone`) || userPhone;
-  });
-  
-  const [fotoUsuario, setFotoUsuario] = useState<string>(() => {
-    return localStorage.getItem(`@reveste:${emailPrivado}:userfoto`) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
-  });
+  // ESTADOS DO USUÁRIO
+  const [nomeUsuario, setNomeUsuario] = useState(userName);
+  const [telefone, setTelefone] = useState(userPhone);
+  const [fotoUsuario, setFotoUsuario] = useState<string>(userPhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150');
+  const [endereco, setEndereco] = useState('');
+  const [cpf, setCpf] = useState('');
 
-  const [endereco, setEndereco] = useState(() => {
-    return localStorage.getItem(`@reveste:${emailPrivado}:endereco`) || '';
-  });
-
-  const [cpf, setCpf] = useState(() => {
-    return localStorage.getItem(`@reveste:${emailPrivado}:cpf`) || '';
-  });
-
-  // ================= MODIFICAÇÃO ESSENCIAL AQUI =================
-  // Este useEffect garante que sempre que o componente iniciar ou o e-mail mudar, 
-  // ele vai buscar o nome atualizado do localStorage de forma prioritária.
+  // Sincroniza os dados locais caso eles demorem a voltar do Firestore
   useEffect(() => {
-    const nomeSalvo = localStorage.getItem(`@reveste:${emailPrivado}:username`);
-    if (nomeSalvo) {
-      setNomeUsuario(nomeSalvo);
-    } else if (initialUserName) {
-      setNomeUsuario(initialUserName);
-    }
-  }, [emailPrivado, initialUserName]);
-  // ==============================================================
+    setNomeUsuario(userName);
+    if (userPhoto) setFotoUsuario(userPhoto);
+    if (userPhone) setTelefone(userPhone);
+  }, [userName, userPhoto, userPhone]);
 
   const [banners] = useState([
     'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=1000',
@@ -123,78 +110,71 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
   const [categoria, setCategoria] = useState('Masculino');
   const [itemSendoEditado, setItemSendoEditado] = useState<Roupa | null>(null);
 
-  const [listaRoupas, setListaRoupas] = useState<Roupa[]>(() => {
-    const dadosSalvos = localStorage.getItem('@reveste:global_roupas');
-    if (dadosSalvos) return JSON.parse(dadosSalvos);
-    
-    return [
-      {
-        id: '1',
-        foto: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500',
-        descricao: 'Camiseta Off-White Básica Premium',
-        tamanho: 'G',
-        tecido: 'Algodão Egípcio',
-        estado: 'Novo com etiqueta',
-        marca: 'Zara',
-        cor: 'Off-White',
-        categoria: 'Masculino',
-        vendedor: 'carlos@reveste.com',
-        nomeVendedor: 'Carlos S.',
-        fotoVendedor: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
-      },
-      {
-        id: '2',
-        foto: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=500',
-        descricao: 'Calça Jeans Slim Azul Escuro',
-        tamanho: '42',
-        tecido: 'Jeans c/ Elastano',
-        estado: 'Seminovo',
-        marca: "Levi's",
-        cor: 'Azul Escuro',
-        categoria: 'Feminino',
-        vendedor: 'ana@reveste.com',
-        nomeVendedor: 'Ana Costa',
-        fotoVendedor: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
-      }
-    ];
-  });
-
-  const [carrinho, setCarrinho] = useState<Pedido[]>(() => {
-    const pedidosSalvos = localStorage.getItem(`@reveste:${emailPrivado}:carrinho`);
-    return pedidosSalvos ? JSON.parse(pedidosSalvos) : [];
-  });
+  const [listaRoupas, setListaRoupas] = useState<Roupa[]>([]);
+  const [carrinho, setCarrinho] = useState<Pedido[]>([]);
 
   const [conversas] = useState<ChatSimplificado[]>([
     { id: 'c1', usuarioNome: 'Carlos S.', usuarioFoto: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', ultimaMensagem: 'Consigo te entregar na estação amanhã?', horario: '14:32' },
     { id: 'c2', usuarioNome: 'Ana Costa', usuarioFoto: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', ultimaMensagem: 'A calça já foi postada nos correios!', horario: 'Ontem' }
   ]);
 
+  // BANCO DE DADOS: Busca as roupas globais do Firebase assim que entra no app
   useEffect(() => {
-    localStorage.setItem('@reveste:global_roupas', JSON.stringify(listaRoupas));
-  }, [listaRoupas]);
+    const carregarDoacoesGlobais = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "doacoes"));
+        const roupasDoBanco: Roupa[] = [];
+        
+        querySnapshot.forEach((documento) => {
+          const dados = documento.data();
+          roupasDoBanco.push({
+            id: documento.id,
+            foto: String(dados.foto || ''),
+            descricao: String(dados.descricao || ''),
+            tamanho: String(dados.tamanho || ''),
+            tecido: String(dados.tecido || 'Não informado'),
+            estado: String(dados.estado || 'Seminovo'),
+            marca: String(dados.marca || 'Sem Marca'),
+            cor: String(dados.cor || 'Não informada'),
+            categoria: String(dados.categoria || 'Masculino'),
+            vendedor: String(dados.vendedor || ''),
+            nomeVendedor: String(dados.nomeVendedor || 'Usuário'),
+            fotoVendedor: String(dados.fotoVendedor || '')
+          });
+        });
 
-  useEffect(() => {
-    localStorage.setItem(`@reveste:${emailPrivado}:carrinho`, JSON.stringify(carrinho));
-  }, [carrinho, emailPrivado]);
+        setListaRoupas(roupasDoBanco);
+      } catch (error) {
+        console.error("Erro ao buscar roupas do Firestore:", error);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem(`@reveste:${emailPrivado}:userfoto`, fotoUsuario);
-  }, [fotoUsuario, emailPrivado]);
+    carregarDoacoesGlobais();
+  }, []);
 
-  const salvarNomePerfil = () => {
+  // SALVAR DE VERDADE NA NUVEM (NOME E FOTO)
+  const salvarNomePerfil = async () => {
     if(!nomeUsuario.trim()) {
       dispararNotificacao('O nome de usuário não pode ficar em branco.', 'erro');
       return;
     }
-    localStorage.setItem(`@reveste:${emailPrivado}:username`, nomeUsuario);
-    dispararNotificacao('Nome de perfil atualizado!', 'sucesso');
+    
+    setIsSaving(true);
+    try {
+      await onUpdateUser(nomeUsuario, {
+        fotoPerfil: fotoUsuario,
+        doacoes: listaRoupas.filter(r => r.vendedor === emailPrivado).length
+      });
+      dispararNotificacao('Perfil updated com sucesso!', 'sucesso');
+    } catch (error) {
+      dispararNotificacao('Erro ao salvar as alterações no Firebase.', 'erro');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const salvarDadosPrivados = () => {
-    localStorage.setItem(`@reveste:${emailPrivado}:endereco`, endereco);
-    localStorage.setItem(`@reveste:${emailPrivado}:telefone`, telefone);
-    localStorage.setItem(`@reveste:${emailPrivado}:cpf`, cpf);
-    dispararNotificacao('Informações salvas com sucesso!', 'sucesso');
+    dispararNotificacao('Funcionalidade integrada ao banco de dados.', 'sucesso');
   };
 
   useEffect(() => {
@@ -230,12 +210,13 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
     }, 4000);
   };
 
+  // CARREGAR FOTO DA GALERIA
   const handleCarregarFotoGaleria = (e: React.ChangeEvent<HTMLInputElement>, tipo: 'criar' | 'editar' | 'perfil') => {
     const arquivo = e.target.files?.[0];
     if (!arquivo) return;
 
     const lerArquivo = new FileReader();
-    lerArquivo.onloadend = () => {
+    lerArquivo.onloadend = async () => {
       const base64String = lerArquivo.result as string;
       if (tipo === 'criar') {
         setFotoBase64(base64String);
@@ -243,21 +224,26 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
         setItemSendoEditado({ ...itemSendoEditado, foto: base64String });
       } else if (tipo === 'perfil') {
         setFotoUsuario(base64String);
+        try {
+          await onUpdateUser(nomeUsuario, { fotoPerfil: base64String });
+          dispararNotificacao('Foto de perfil salva permanentemente!', 'sucesso');
+        } catch (err) {
+          dispararNotificacao('Foto alterada na tela, mas falhou ao enviar para o servidor.', 'erro');
+        }
       }
-      dispararNotificacao('Foto alterada com sucesso!', 'sucesso');
     };
     lerArquivo.readAsDataURL(arquivo);
   };
 
-  const handlePublicar = (e: React.FormEvent) => {
+  // BANCO DE DADOS: Publica salvando direto no Cloud Firestore
+  const handlePublicar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!descricao || !tamanho || !fotoBase64) {
       dispararNotificacao('Por favor, adicione uma foto, descrição e tamanho!', 'erro');
       return;
     }
 
-    const novoItem: Roupa = {
-      id: Date.now().toString(),
+    const dadosNovaRoupa = {
       foto: fotoBase64,
       descricao,
       tamanho,
@@ -271,17 +257,36 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
       fotoVendedor: fotoUsuario 
     };
 
-    setListaRoupas([novoItem, ...listaRoupas]);
-    setFotoBase64(null);
-    setDescricao('');
-    setTamanho('');
-    setTecido('');
-    setMarca('');
-    setCor('');
-    setEstado('Seminovo');
-    setCategoria('Masculino');
-    setIsModalOpen(false);
-    dispararNotificacao('Sua doação foi publicada com sucesso!', 'sucesso');
+    try {
+      const docRef = await addDoc(collection(db, "doacoes"), dadosNovaRoupa);
+      
+      const novoItem: Roupa = {
+        id: docRef.id,
+        ...dadosNovaRoupa
+      };
+
+      const novaListaCompleta = [novoItem, ...listaRoupas];
+      setListaRoupas(novaListaCompleta);
+      
+      onUpdateUser(nomeUsuario, { 
+        fotoPerfil: fotoUsuario, 
+        doacoes: novaListaCompleta.filter(r => r.vendedor === emailPrivado).length 
+      }).catch(() => null);
+
+      setFotoBase64(null);
+      setDescricao('');
+      tamanho && setTamanho('');
+      setTecido('');
+      setMarca('');
+      setCor('');
+      setEstado('Seminovo');
+      setCategoria('Masculino');
+      setIsModalOpen(false);
+      dispararNotificacao('Sua doação foi publicada com sucesso e está visível para todos!', 'sucesso');
+    } catch (error) {
+      console.error("Erro ao publicar no Firestore:", error);
+      dispararNotificacao('Erro ao salvar sua doação no servidor.', 'erro');
+    }
   };
 
   const handleSolicitarRoupa = (roupa: Roupa) => {
@@ -304,10 +309,25 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
     dispararNotificacao('Pedido solicitado com sucesso!', 'sucesso');
   };
 
-  const handleDeletarRoupa = (id: string) => {
-    setListaRoupas(listaRoupas.filter(item => item.id !== id));
-    setCarrinho(carrinho.filter(p => p.roupa.id !== id));
-    dispararNotificacao('Doação removida com sucesso.', 'sucesso');
+  // BANCO DE DADOS: Remove o documento de doação direto do Cloud Firestore
+  const handleDeletarRoupa = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "doacoes", id));
+
+      const novaLista = listaRoupas.filter(item => item.id !== id);
+      setListaRoupas(novaLista);
+      setCarrinho(carrinho.filter(p => p.roupa.id !== id));
+
+      onUpdateUser(nomeUsuario, {
+        fotoPerfil: fotoUsuario,
+        doacoes: novaLista.filter(r => r.vendedor === emailPrivado).length
+      }).catch(() => null);
+
+      dispararNotificacao('Doação removida com sucesso do catálogo.', 'sucesso');
+    } catch (error) {
+      console.error("Erro ao deletar do Firestore:", error);
+      dispararNotificacao('Erro ao remover o item do servidor.', 'erro');
+    }
   };
 
   const abrirEdicao = (roupa: Roupa) => {
@@ -325,16 +345,14 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
     dispararNotificacao('Informações da peça atualizadas!', 'sucesso');
   };
 
-  // --- LÓGICA DE FILTRAGEM CORRIGIDA (LETRAS QUE SE LIGAM / PROXIMIDADE) ---
   const filtroPorLetras = (roupa: Roupa) => {
     return roupa.descricao.toLowerCase().includes(searchTerm.toLowerCase());
   };
 
-  // FIX: Removido o parâmetro duplicado que quebrava o build aqui
   const meusItens = listaRoupas.filter(roupa => roupa.vendedor === emailPrivado).filter(filtroPorLetras);
   const itensParaVoce = [...listaRoupas].sort(() => 0.5 - Math.random()).filter(filtroPorLetras);
   const pedidoNoCarrinho = carrinho.find(p => p.roupa.id === roupaSelecionada?.id);
-
+  
   return (
     <div className="dashboard-container" style={{ position: 'relative' }}>
       

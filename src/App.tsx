@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { FiArrowLeft, FiArrowRight, FiEye, FiEyeOff } from 'react-icons/fi';
 import { auth, db } from './firebase'; 
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import Inicial from './inicial'; // Importação necessária para a troca de tela
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import Inicial from './inicial'; 
 
 type ScreenState = 'welcome' | 'signup' | 'signin' | 'dashboard';
 
 export default function App() {
+  
   const [screen, setScreen] = useState<ScreenState>('signup'); 
   const [showPassword, setShowPassword] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -16,6 +17,36 @@ export default function App() {
   // Estados para exibir mensagens de erro ou sucesso
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // ESTADO NOVO: Guarda os dados que vêm do Banco de Dados (Firestore)
+  const [userDataFromDB, setUserDataFromDB] = useState<{
+    nome?: string;
+    telefone?: string;
+    fotoPerfil?: string;
+    doacoes?: number;
+    pedidos?: number;
+  }>({});
+
+  // Monitora se o usuário está logado e busca os dados dele no Firestore automaticamente
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Se o usuário está logado, busca o documento dele na coleção "usuarios"
+        const userRef = doc(db, "usuarios", user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          // Salva os dados do banco (como doações e foto) no estado do React
+          setUserDataFromDB(userSnap.data());
+        }
+        setScreen('dashboard');
+      } else {
+        setScreen('signin');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Escuta o tamanho da tela para comportamento responsivo
   useEffect(() => {
@@ -44,14 +75,13 @@ export default function App() {
     rememberMe: false
   });
 
-  // Limpa as mensagens ao trocar de tela manualmente
   const mudarTela = (novaTela: ScreenState) => {
     setErrorMsg('');
     setSuccessMsg('');
     setScreen(novaTela);
   };
 
-  // ================= CADASTRO REAL NO FIREBASE + TRANSIÇÃO =================
+  // ================= CADASTRO NO FIREBASE =================
   const handleSignUp = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -77,11 +107,17 @@ export default function App() {
     createUserWithEmailAndPassword(auth, signUpData.email, signUpData.password)
       .then(async (userCredential) => {
         const user = userCredential.user;
+        
+        await updateProfile(user, { displayName: signUpData.fullName });
+
         await setDoc(doc(db, "usuarios", user.uid), {
           uid: user.uid,
           nome: signUpData.fullName,
           email: signUpData.email,
           telefone: signUpData.phone,
+          fotoPerfil: '', // Começa vazio
+          doacoes: 0,     // Começa com 0 doações permanentes
+          pedidos: 0,     // Começa com 0 pedidos permanentes
           criadoEm: new Date().toISOString()
         });
         
@@ -99,7 +135,7 @@ export default function App() {
       });
   };
 
-  // ================= LOGIN REAL NO FIREBASE =================
+  // ================= LOGIN NO FIREBASE =================
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -115,11 +151,6 @@ export default function App() {
     try {
       await signInWithEmailAndPassword(auth, signInData.email, signInData.password);
       setSuccessMsg('Login realizado com sucesso! Entrando...');
-      
-      setTimeout(() => {
-        setScreen('dashboard'); 
-      }, 1500);
-  
     } catch (error: any) {
       console.error(error);
       setErrorMsg('E-mail ou senha incorretos!');
@@ -128,27 +159,61 @@ export default function App() {
     }
   };
 
-  // Função para realizar o logout
+  // ================= ATUALIZAR O USUÁRIO NO BANCO DE DADOS =================
+  // Atualizada para aceitar múltiplos campos (nome, foto, doações, etc.)
+  const handleUpdateUser = async (newName: string, extraData?: { fotoPerfil?: string; doacoes?: number }) => {
+    const usuarioAtual = auth.currentUser;
+    if (!usuarioAtual) return;
+
+    try {
+      // 1. Atualiza o nome de exibição básico
+      await updateProfile(usuarioAtual, { displayName: newName });
+
+      // 2. Cria os dados que vão pro Firestore
+      const dadosParaAtualizar = {
+        nome: newName,
+        ...extraData
+      };
+
+      const userRef = doc(db, "usuarios", usuarioAtual.uid);
+      await setDoc(userRef, dadosParaAtualizar, { merge: true });
+
+      // 3. Atualiza a tela local para mudar na hora sem precisar recarregar
+      setUserDataFromDB(prev => ({
+        ...prev,
+        ...dadosParaAtualizar
+      }));
+
+    } catch (error) {
+      console.error("Erro ao salvar dados permanentes:", error);
+      throw error;
+    }
+  };
+
+  // LOGOUT
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setUserDataFromDB({});
       mudarTela('signin');
     } catch (error) {
       console.error("Erro ao sair:", error);
     }
   };
 
-  // LÓGICA SIMPLIFICADA: Se for dashboard, mostra Inicial. Se não, mostra o layout de Auth.
+  // ================= RENDERIZAÇÃO DAS TELAS =================
   if (screen === 'dashboard') {
-   return (
+  return (
     <Inicial 
-      userName={auth.currentUser?.displayName || signUpData.fullName || "Usuário"} 
-      userEmail={auth.currentUser?.email || signInData.email} 
-      userPhone={signUpData.phone || ""} 
-      onLogout={handleLogout} 
+      userName={userDataFromDB.nome || auth.currentUser?.displayName || 'Usuário'} 
+      userEmail={auth.currentUser?.email || ''} 
+      userPhone={userDataFromDB.telefone || ''}
+      userPhoto={userDataFromDB.fotoPerfil || ''} // IMPORTANTE: Passa a foto salva no Firestore
+      onLogout={handleLogout}
+      onUpdateUser={handleUpdateUser} 
     />
   );
-  }
+}
 
   return (
     <div style={styles.pageWrapper}>
