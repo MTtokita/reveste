@@ -75,7 +75,7 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
   const fileInputPerfilRef = useRef<HTMLInputElement>(null);
 
   const [toasts, setToasts] = useState<ToastMensagem[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
+  const [_isSaving, _setIsSaving] = useState(false);
 
   const emailPrivado = userEmail || 'usuario@reveste.com.br';
 
@@ -159,7 +159,7 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
       return;
     }
     
-    setIsSaving(true);
+    _setIsSaving(true);
     try {
       await onUpdateUser(nomeUsuario, {
         fotoPerfil: fotoUsuario,
@@ -169,7 +169,7 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
     } catch (error) {
       dispararNotificacao('Erro ao salvar as alterações no Firebase.', 'erro');
     } finally {
-      setIsSaving(false);
+      _setIsSaving(false);
     }
   };
 
