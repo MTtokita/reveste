@@ -1,0 +1,892 @@
+import { useState, useEffect, useRef } from 'react';
+import { 
+  FiLogOut, FiLayers, FiBell, FiUser, 
+  FiX, FiCamera, FiTrash2, FiEdit3, FiHome, FiPlus,
+  FiShoppingBag, FiMessageSquare, FiTruck, FiClock,
+  FiCheckCircle, FiAlertCircle, FiMapPin, FiPhone, FiMail, FiLock, FiFileText,
+  FiSettings, FiSearch 
+} from 'react-icons/fi';
+import './inicial.css'; 
+
+interface DashboardProps {
+  userName: string;
+  userEmail: string;   
+  userPhone?: string;  
+  onLogout: () => void;
+}
+
+interface Roupa {
+  id: string;
+  foto: string; 
+  descricao: string;
+  tamanho: string;
+  tecido: string;
+  estado: string;
+  marca: string;
+  cor: string;
+  categoria: string;
+  vendedor: string; 
+  fotoVendedor?: string; 
+  nomeVendedor?: string; 
+}
+
+interface Pedido {
+  id: string;
+  roupa: Roupa;
+  dataSolicitacao: string;
+  tempoEstimado: string;
+}
+
+interface ToastMensagem {
+  id: number;
+  texto: string;
+  tipo: 'sucesso' | 'erro' | 'notificacao';
+}
+
+interface ChatSimplificado {
+  id: string;
+  usuarioNome: string;
+  usuarioFoto: string;
+  ultimaMensagem: string;
+  horario: string;
+}
+
+export default function Inicial({ userName: initialUserName, userEmail, userPhone = '', onLogout }: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<'home' | 'itens' | 'carrinho' | 'perfil'>('home');
+  const [subAbaPerfil, setSubAbaPerfil] = useState<'dados' | 'privado' | 'chats'>('dados');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [roupaSelecionada, setRoupaSelecionada] = useState<Roupa | null>(null);
+
+  // --- BUSCA E SIDEBAR ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const carrosselRef = useRef<HTMLDivElement>(null);
+  const [currentBanner, setCurrentBanner] = useState(0);
+
+  const fileInputCriarRef = useRef<HTMLInputElement>(null);
+  const fileInputEditarRef = useRef<HTMLInputElement>(null);
+  const fileInputPerfilRef = useRef<HTMLInputElement>(null);
+
+  const [toasts, setToasts] = useState<ToastMensagem[]>([]);
+
+  const emailPrivado = userEmail || localStorage.getItem('@reveste:current_user_email') || 'usuario@reveste.com.br';
+
+  const [nomeUsuario, setNomeUsuario] = useState(() => {
+    return localStorage.getItem(`@reveste:${emailPrivado}:username`) || initialUserName;
+  });
+  
+  const [telefone, setTelefone] = useState(() => {
+    return localStorage.getItem(`@reveste:${emailPrivado}:telefone`) || userPhone;
+  });
+  
+  const [fotoUsuario, setFotoUsuario] = useState<string>(() => {
+    return localStorage.getItem(`@reveste:${emailPrivado}:userfoto`) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150';
+  });
+
+  const [endereco, setEndereco] = useState(() => {
+    return localStorage.getItem(`@reveste:${emailPrivado}:endereco`) || '';
+  });
+
+  const [cpf, setCpf] = useState(() => {
+    return localStorage.getItem(`@reveste:${emailPrivado}:cpf`) || '';
+  });
+
+  const [banners] = useState([
+    'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=1000',
+    'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=1000',
+    'https://images.unsplash.com/photo-1479064555552-3ef4979f8908?w=1000' 
+  ]);
+
+  // --- Estados dos Formulários ---
+  const [fotoBase64, setFotoBase64] = useState<string | null>(null);
+  const [descricao, setDescricao] = useState('');
+  const [tamanho, setTamanho] = useState('');
+  const [tecido, setTecido] = useState('');
+  const [estado, setEstado] = useState('Seminovo');
+  const [marca, setMarca] = useState('');
+  const [cor, setCor] = useState('');
+  const [categoria, setCategoria] = useState('Masculino');
+  const [itemSendoEditado, setItemSendoEditado] = useState<Roupa | null>(null);
+
+  const [listaRoupas, setListaRoupas] = useState<Roupa[]>(() => {
+    const dadosSalvos = localStorage.getItem('@reveste:global_roupas');
+    if (dadosSalvos) return JSON.parse(dadosSalvos);
+    
+    return [
+      {
+        id: '1',
+        foto: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500',
+        descricao: 'Camiseta Off-White Básica Premium',
+        tamanho: 'G',
+        tecido: 'Algodão Egípcio',
+        estado: 'Novo com etiqueta',
+        marca: 'Zara',
+        cor: 'Off-White',
+        categoria: 'Masculino',
+        vendedor: 'carlos@reveste.com',
+        nomeVendedor: 'Carlos S.',
+        fotoVendedor: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+      },
+      {
+        id: '2',
+        foto: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=500',
+        descricao: 'Calça Jeans Slim Azul Escuro',
+        tamanho: '42',
+        tecido: 'Jeans c/ Elastano',
+        estado: 'Seminovo',
+        marca: "Levi's",
+        cor: 'Azul Escuro',
+        categoria: 'Feminino',
+        vendedor: 'ana@reveste.com',
+        nomeVendedor: 'Ana Costa',
+        fotoVendedor: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
+      }
+    ];
+  });
+
+  const [carrinho, setCarrinho] = useState<Pedido[]>(() => {
+    const pedidosSalvos = localStorage.getItem(`@reveste:${emailPrivado}:carrinho`);
+    return pedidosSalvos ? JSON.parse(pedidosSalvos) : [];
+  });
+
+  const [conversas] = useState<ChatSimplificado[]>([
+    { id: 'c1', usuarioNome: 'Carlos S.', usuarioFoto: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', ultimaMensagem: 'Consigo te entregar na estação amanhã?', horario: '14:32' },
+    { id: 'c2', usuarioNome: 'Ana Costa', usuarioFoto: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', ultimaMensagem: 'A calça já foi postada nos correios!', horario: 'Ontem' }
+  ]);
+
+  useEffect(() => {
+    localStorage.setItem('@reveste:global_roupas', JSON.stringify(listaRoupas));
+  }, [listaRoupas]);
+
+  useEffect(() => {
+    localStorage.setItem(`@reveste:${emailPrivado}:carrinho`, JSON.stringify(carrinho));
+  }, [carrinho, emailPrivado]);
+
+  useEffect(() => {
+    localStorage.setItem(`@reveste:${emailPrivado}:userfoto`, fotoUsuario);
+  }, [fotoUsuario, emailPrivado]);
+
+  const salvarNomePerfil = () => {
+    if(!nomeUsuario.trim()) {
+      dispararNotificacao('O nome de usuário não pode ficar em branco.', 'erro');
+      return;
+    }
+    localStorage.setItem(`@reveste:${emailPrivado}:username`, nomeUsuario);
+    dispararNotificacao('Nome de perfil atualizado!', 'sucesso');
+  };
+
+  const salvarDadosPrivados = () => {
+    localStorage.setItem(`@reveste:${emailPrivado}:endereco`, endereco);
+    localStorage.setItem(`@reveste:${emailPrivado}:telefone`, telefone);
+    localStorage.setItem(`@reveste:${emailPrivado}:cpf`, cpf);
+    dispararNotificacao('Informações salvas com sucesso!', 'sucesso');
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'home' || !carrosselRef.current) return;
+
+    const interval = setInterval(() => {
+      setCurrentBanner((prevIndex) => {
+        const nextIndex = prevIndex === banners.length - 1 ? 0 : prevIndex + 1;
+        if (carrosselRef.current) {
+          const width = carrosselRef.current.clientWidth;
+          carrosselRef.current.scrollTo({ left: nextIndex * width, behavior: 'smooth' });
+        }
+        return nextIndex;
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [banners.length, activeTab]);
+
+  const handleScrollManual = () => {
+    if (!carrosselRef.current) return;
+    const scrollX = carrosselRef.current.scrollLeft;
+    const width = carrosselRef.current.clientWidth;
+    const index = Math.round(scrollX / width);
+    if (index !== currentBanner) setCurrentBanner(index);
+  };
+
+  const dispararNotificacao = (texto: string, tipo: 'sucesso' | 'erro' | 'notificacao' = 'notificacao') => {
+    const novaNotif = { id: Date.now(), texto, tipo };
+    setToasts(prev => [...prev, novaNotif]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== novaNotif.id));
+    }, 4000);
+  };
+
+  const handleCarregarFotoGaleria = (e: React.ChangeEvent<HTMLInputElement>, tipo: 'criar' | 'editar' | 'perfil') => {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+
+    const lerArquivo = new FileReader();
+    lerArquivo.onloadend = () => {
+      const base64String = lerArquivo.result as string;
+      if (tipo === 'criar') {
+        setFotoBase64(base64String);
+      } else if (tipo === 'editar' && itemSendoEditado) {
+        setItemSendoEditado({ ...itemSendoEditado, foto: base64String });
+      } else if (tipo === 'perfil') {
+        setFotoUsuario(base64String);
+      }
+      dispararNotificacao('Foto alterada com sucesso!', 'sucesso');
+    };
+    lerArquivo.readAsDataURL(arquivo);
+  };
+
+  const handlePublicar = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!descricao || !tamanho || !fotoBase64) {
+      dispararNotificacao('Por favor, adicione uma foto, descrição e tamanho!', 'erro');
+      return;
+    }
+
+    const novoItem: Roupa = {
+      id: Date.now().toString(),
+      foto: fotoBase64,
+      descricao,
+      tamanho,
+      tecido: tecido || 'Não informado',
+      estado,
+      marca: marca || 'Sem Marca',
+      cor: cor || 'Não informada',
+      categoria,
+      vendedor: emailPrivado, 
+      nomeVendedor: nomeUsuario, 
+      fotoVendedor: fotoUsuario 
+    };
+
+    setListaRoupas([novoItem, ...listaRoupas]);
+    setFotoBase64(null);
+    setDescricao('');
+    setTamanho('');
+    setTecido('');
+    setMarca('');
+    setCor('');
+    setEstado('Seminovo');
+    setCategoria('Masculino');
+    setIsModalOpen(false);
+    dispararNotificacao('Sua doação foi publicada com sucesso!', 'sucesso');
+  };
+
+  const handleSolicitarRoupa = (roupa: Roupa) => {
+    const jaSolicitado = carrinho.some(pedido => pedido.roupa.id === roupa.id);
+    if (jaSolicitado) {
+      dispararNotificacao('Você já possui esta peça adicionada à sua Sacola.', 'erro');
+      return;
+    }
+
+    const novoPedido: Pedido = {
+      id: `ped-${Date.now()}`,
+      roupa: roupa,
+      dataSolicitacao: new Date().toLocaleDateString('pt-BR'),
+      tempoEstimado: `${Math.floor(Math.random() * 4) + 2} a ${Math.floor(Math.random() * 4) + 6} dias úteis`
+    };
+
+    setCarrinho([novoPedido, ...carrinho]);
+    setRoupaSelecionada(null); 
+    setActiveTab('carrinho'); 
+    dispararNotificacao('Pedido solicitado com sucesso!', 'sucesso');
+  };
+
+  const handleDeletarRoupa = (id: string) => {
+    setListaRoupas(listaRoupas.filter(item => item.id !== id));
+    setCarrinho(carrinho.filter(p => p.roupa.id !== id));
+    dispararNotificacao('Doação removida com sucesso.', 'sucesso');
+  };
+
+  const abrirEdicao = (roupa: Roupa) => {
+    setItemSendoEditado(roupa);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSalvarEdicao = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemSendoEditado) return;
+
+    setListaRoupas(listaRoupas.map(item => item.id === itemSendoEditado.id ? itemSendoEditado : item));
+    setIsEditModalOpen(false);
+    setItemSendoEditado(null);
+    dispararNotificacao('Informações da peça atualizadas!', 'sucesso');
+  };
+
+  // --- LÓGICA DE FILTRAGEM CORRIGIDA (LETRAS QUE SE LIGAM / PROXIMIDADE) ---
+  const filtroPorLetras = (roupa: Roupa) => {
+    return roupa.descricao.toLowerCase().includes(searchTerm.toLowerCase());
+  };
+
+  // FIX: Removido o parâmetro duplicado que quebrava o build aqui
+  const meusItens = listaRoupas.filter(roupa => roupa.vendedor === emailPrivado).filter(filtroPorLetras);
+  const itensParaVoce = [...listaRoupas].sort(() => 0.5 - Math.random()).filter(filtroPorLetras);
+  const pedidoNoCarrinho = carrinho.find(p => p.roupa.id === roupaSelecionada?.id);
+
+  return (
+    <div className="dashboard-container" style={{ position: 'relative' }}>
+      
+      {/* BARRA LATERAL (SIDEBAR) */}
+      {isSidebarOpen && (
+        <>
+          <div 
+            onClick={() => setIsSidebarOpen(false)} 
+            style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 998 }}
+          />
+          <div 
+            style={{ 
+              position: 'fixed', top: 0, right: 0, width: '280px', height: '100%', 
+              backgroundColor: '#1a202c', boxShadow: '-2px 0 8px rgba(0,0,0,0.3)', 
+              zIndex: 999, padding: '24px 16px', display: 'flex', flexDirection: 'column',
+              color: '#fff'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h3 style={{ margin: 0 }}>CONFIGURAÇÕES</h3>
+              <button onClick={() => setIsSidebarOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}>
+                <FiX size={22} />
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+              <img src={fotoUsuario} alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+              <div>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#a0aec0' }}>Logado como</p>
+                <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{emailPrivado}</p>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => { setIsSidebarOpen(false); onLogout(); }} 
+              className="logout-btn"
+              style={{ 
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                gap: '8px', padding: '12px', borderRadius: '6px', backgroundColor: '#e53e3e', 
+                color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
+              }}
+            >
+              <span>Sair</span>
+              <FiLogOut size={18} /> 
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* TOASTS INTERNOS */}
+      <div className="toast-app-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast-app-item ${t.tipo}`}>
+            {t.tipo === 'sucesso' ? <FiCheckCircle size={16}/> : <FiAlertCircle size={16}/>}
+            <span>{t.texto}</span>
+          </div>
+        ))}
+      </div>
+
+      <input type="file" ref={fileInputCriarRef} style={{ display: 'none' }} accept="image/*" onChange={(e) => handleCarregarFotoGaleria(e, 'criar')} />
+      <input type="file" ref={fileInputEditarRef} style={{ display: 'none' }} accept="image/*" onChange={(e) => handleCarregarFotoGaleria(e, 'editar')} />
+      <input type="file" ref={fileInputPerfilRef} style={{ display: 'none' }} accept="image/*" onChange={(e) => handleCarregarFotoGaleria(e, 'perfil')} />
+
+      {/* HEADER INTEGRADO */}
+      <header className="dashboard-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+        <h1 className="logo-text" style={{ flexShrink: 0, margin: 0 }}>reveste</h1>
+        
+        {/* BARRA DE PESQUISA INTERNA NO HEADER */}
+        <div style={{ position: 'relative', flex: 1, maxWidth: '400px', display: 'flex', alignItems: 'center' }}>
+          <FiSearch style={{ position: 'absolute', left: '12px', color: '#a0aec0' }} size={16} />
+          <input 
+            type="text" 
+            placeholder="Pesquisar desapegos..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ 
+              width: '100%', padding: '8px 12px 8px 36px', borderRadius: '20px', 
+              border: '1px solid #cbd5e0', fontSize: '0.9rem', outline: 'none' 
+            }}
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', color: '#a0aec0', cursor: 'pointer' }}>
+              <FiX size={14} />
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+          <button className="nav-item" style={{ background: 'none', border: 'none', color: '#fff', padding: 0, cursor: 'pointer' }} onClick={() => dispararNotificacao("Nenhuma notificação nova", "notificacao")}>
+            <FiBell size={22} />
+          </button>
+          
+          {/* ENGRENAGEM PARA ABRIR O MODAL DE SAIR */}
+          <button 
+            onClick={() => setIsSidebarOpen(true)} 
+            style={{ background: 'none', border: 'none', color: '#ecc94b', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+          >
+            <FiSettings size={22} />
+          </button>
+        </div>
+      </header>
+
+      {/* CONTEÚDO PRINCIPAL */}
+      <main className="dashboard-content">
+        
+        {/* ABA: HOME */}
+        {activeTab === 'home' && (
+          <>
+            <div className="carousel-wrapper">
+              <div ref={carrosselRef} onScroll={handleScrollManual} className="carousel-container">
+                {banners.map((url, index) => (
+                  <div key={index} className="carousel-slide">
+                    <img src={url} alt={`Banner ${index + 1}`} className="carousel-image" />
+                  </div>
+                ))}
+              </div>
+              <div className="indicator-container">
+                {banners.map((_, index) => (
+                  <div key={index} className={`indicator-dot ${currentBanner === index ? 'active' : ''}`} />
+                ))}
+              </div>
+            </div>
+
+            <section className="esteira-wrapper">
+              <h2 className="esteira-title">Recentes</h2>
+              <div className="esteira-scroll">
+                {listaRoupas.filter(filtroPorLetras).map((roupa) => (
+                  <div key={roupa.id} className="produto-card" onClick={() => setRoupaSelecionada(roupa)}>
+                    <img src={roupa.foto} alt={roupa.descricao} className="produto-img" />
+                    <div className="produto-info">
+                      <span className="doacao-disponivel">
+                        Disponível por: {roupa.vendedor === emailPrivado ? `${nomeUsuario} (Você)` : (roupa.nomeVendedor || 'Usuário Reveste')}
+                      </span>
+                      <p className="produto-desc">{roupa.descricao}</p>
+                      <span className="produto-badge">{roupa.tamanho} • {roupa.tecido}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="esteira-wrapper">
+              <h2 className="esteira-title">Para Você</h2>
+              <div className="esteira-scroll">
+                {itensParaVoce.map((roupa) => (
+                  <div key={`pv-${roupa.id}`} className="produto-card" onClick={() => setRoupaSelecionada(roupa)} style={{ borderColor: '#f6ad55', borderWidth: '1px', borderStyle: 'solid' }}>
+                    <img src={roupa.foto} alt={roupa.descricao} className="produto-img" />
+                    <div className="produto-info">
+                      <span className="doacao-disponivel" style={{ color: '#f6ad55' }}>
+                        Por: {roupa.vendedor === emailPrivado ? `${nomeUsuario} (Você)` : (roupa.nomeVendedor || 'Usuário Reveste')}
+                      </span>
+                      <p className="produto-desc">{roupa.descricao}</p>
+                      <span className="produto-badge">{roupa.tamanho} • {roupa.marca}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* ABA: MINHAS DOAÇÕES */}
+        {activeTab === 'itens' && (
+          <section className="gerenciador-wrapper">
+            <h2 className="dashboard-title">Minhas Doações</h2>
+            {meusItens.length === 0 ? (
+              <div className="empty-state"><FiLayers size={44} /><p>Você ainda não cadastrou nenhuma doação.</p></div>
+            ) : (
+              <div className="grid-meus-itens">
+                {meusItens.map((roupa) => (
+                  <div key={`meu-${roupa.id}`} className="meu-item-card">
+                    <img src={roupa.foto} alt={roupa.descricao} className="meu-item-img" />
+                    <div className="meu-item-info">
+                      <div className="meu-item-detalhes" onClick={() => setRoupaSelecionada(roupa)}>
+                        <h3>{roupa.descricao}</h3>
+                        <p>Tamanho: {roupa.tamanho} | Tecido: {roupa.tecido}</p>
+                      </div>
+                      <div className="meu-item-acoes">
+                        <button onClick={() => abrirEdicao(roupa)} className="btn-editar"><FiEdit3 size={14}/><span>Editar</span></button>
+                        <button onClick={() => handleDeletarRoupa(roupa.id)} className="btn-deletar"><FiTrash2 size={14}/><span>Excluir</span></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ABA: CARRINHO */}
+        {activeTab === 'carrinho' && (
+          <section className="gerenciador-wrapper">
+            <h2 className="dashboard-title">Pedidos Solicitados</h2>
+            {carrinho.length === 0 ? (
+              <div className="empty-state"><FiShoppingBag size={44}/><p>Sua sacola de solicitações está vazia.</p></div>
+            ) : (
+              <div className="grid-meus-itens">
+                {carrinho.map((pedido) => (
+                  <div key={pedido.id} className="meu-item-card carrinho-item-card" onClick={() => setRoupaSelecionada(pedido.roupa)}>
+                    <img src={pedido.roupa.foto} alt={pedido.roupa.descricao} className="meu-item-img" />
+                    <div className="meu-item-info">
+                      <div className="meu-item-detalhes">
+                        <span className="status-entrega-badge"><FiTruck size={12}/> A caminho</span>
+                        <h3>{pedido.roupa.descricao}</h3>
+                        <div className="tempo-chegada-box"><FiClock size={14} /><span>Chega em: <strong>{pedido.tempoEstimado}</strong></span></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ABA: PERFIL */}
+        {activeTab === 'perfil' && (
+          <section className="gerenciador-wrapper perfil-layout-completo">
+            <div className="perfil-cabecalho-principal">
+              <div className="avatar-perfil-container" onClick={() => fileInputPerfilRef.current?.click()} title="Clique para alterar foto">
+                <img src={fotoUsuario} alt="Foto de Perfil" className="perfil-avatar-img" />
+                <div className="avatar-overlay-camera">
+                  <FiCamera size={16} />
+                </div>
+              </div>
+              <h2 className="perfil-nome-usuario">{nomeUsuario}</h2>
+              <p className="perfil-email-subtext" style={{ color: '#a0aec0', fontSize: '0.9rem', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
+                <FiMail size={12}/> {emailPrivado}
+              </p>
+              <p className="perfil-status-tag" style={{ marginTop: '8px' }}>Membro Doador Ativo</p>
+            </div>
+
+            <div className="perfil-sub-abas-nav">
+              <button onClick={() => setSubAbaPerfil('dados')} className={`sub-aba-btn ${subAbaPerfil === 'dados' ? 'active' : ''}`}>
+                <FiUser size={16} /><span>Público</span>
+              </button>
+              <button onClick={() => setSubAbaPerfil('privado')} className={`sub-aba-btn ${subAbaPerfil === 'privado' ? 'active' : ''}`}>
+                <FiLock size={16} /><span>Privado</span>
+              </button>
+              <button onClick={() => setSubAbaPerfil('chats')} className={`sub-aba-btn ${subAbaPerfil === 'chats' ? 'active' : ''}`}>
+                <FiMessageSquare size={16} /><span>Conversas</span>
+              </button>
+            </div>
+
+            {subAbaPerfil === 'dados' && (
+              <div className="sub-aba-content animate-fade">
+                <div className="card-info-perfil">
+                  <h3>Alterar Dados do Perfil</h3>
+                  <div className="input-group" style={{ marginTop: '12px' }}>
+                    <label><FiUser size={14}/> Nome de Exibição pública (Obrigatório)</label>
+                    <input type="text" value={nomeUsuario} onChange={(e) => setNomeUsuario(e.target.value)} className="modal-input" />
+                  </div>
+                  <button onClick={salvarNomePerfil} className="btn-publicar" style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}>
+                    Salvar Alterações Públicas
+                  </button>
+                  <div className="estatisticas-perfil-row" style={{ marginTop: '20px' }}>
+                    <div className="estat-box"><strong>{meusItens.length}</strong><span>Doações</span></div>
+                    <div className="estat-box"><strong>{carrinho.length}</strong><span>Pedidos</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {subAbaPerfil === 'privado' && (
+              <div className="sub-aba-content animate-fade">
+                <div className="card-info-perfil formularioprivado">
+                  <h3>Informações Confidenciais</h3>
+                  <p className="aviso-seguranca">Estes dados servem apenas para organizar suas entregas e nunca são expostos abertamente.</p>
+                  <div className="input-group">
+                    <label><FiFileText size={14}/> CPF do Titular (Opcional)</label>
+                    <input type="text" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" className="modal-input" />
+                  </div>
+                  <div className="input-group">
+                    <label><FiMapPin size={14}/> Endereço Residencial Completo</label>
+                    <input type="text" value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número, complemento e CEP" className="modal-input" />
+                  </div>
+                  <div className="input-group">
+                    <label><FiPhone size={14}/> Telefone / WhatsApp (Obrigatório do Cadastro)</label>
+                    <input type="text" value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="(00) 00000-0000" className="modal-input" />
+                  </div>
+                  <button onClick={salvarDadosPrivados} className="btn-publicar" style={{ marginTop: '12px' }}>
+                    Salvar Informações Privadas
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {subAbaPerfil === 'chats' && (
+              <div className="sub-aba-content animate-fade">
+                <div className="lista-conversas-container">
+                  {conversas.map(chat => (
+                    <div key={chat.id} className="conversa-item-linha" onClick={() => dispararNotificacao(`Abrindo chat com ${chat.usuarioNome}...`, 'notificacao')}>
+                      <img src={chat.usuarioFoto} alt={chat.usuarioNome} className="conversa-avatar" />
+                      <div className="conversa-conteudo-texto">
+                        <div className="conversa-header-linha">
+                          <h4>{chat.usuarioNome}</h4>
+                          <span className="conversa-tempo">{chat.horario}</span>
+                        </div>
+                        <p className="conversa-preview-msg">{chat.ultimaMensagem}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+
+      {/* MODAL: DETALHES DA ROUPE */}
+        {roupaSelecionada && (
+        <div className="modal-overlay">
+          <div className="modal-content detalhes-modal-content">
+            <header className="modal-header">
+              <h2>Detalhes do Desapego</h2>
+              <button onClick={() => setRoupaSelecionada(null)} className="close-modal-btn">
+                <FiX size={22} />
+              </button>
+            </header>
+
+            <div className="detalhes-body">
+              <img src={roupaSelecionada.foto} alt={roupaSelecionada.descricao} className="detalhes-img-full" />
+              
+              <div className="detalhes-info-section">
+                <h2 className="detalhes-titulo">{roupaSelecionada.descricao}</h2>
+                
+                {pedidoNoCarrinho && (
+                  <div className="alerta-tempo-entrega">
+                    <FiTruck size={18} />
+                    <p>Status: <strong>A caminho</strong> • Previsão: {pedidoNoCarrinho.tempoEstimado}</p>
+                  </div>
+                )}
+
+                <div className="detalhes-grid-atributos">
+                  <div className="atributo-box"><span>Tamanho</span><strong>{roupaSelecionada.tamanho}</strong></div>
+                  <div className="atributo-box"><span>Tecido</span><strong>{roupaSelecionada.tecido}</strong></div>
+                  <div className="atributo-box"><span>Condição</span><strong>{roupaSelecionada.estado}</strong></div>
+                  <div className="atributo-box"><span>Marca</span><strong>{roupaSelecionada.marca}</strong></div>
+                  <div className="atributo-box"><span>Cor</span><strong>{roupaSelecionada.cor}</strong></div>
+                  <div className="atributo-box"><span>Categoria</span><strong>{roupaSelecionada.categoria}</strong></div>
+                </div>
+
+                <hr className="detalhes-divisor" />
+
+                <div className="doador-profile-box">
+                  <img src={roupaSelecionada.vendedor === emailPrivado ? fotoUsuario : (roupaSelecionada.fotoVendedor || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150")} alt="Doador" className="doador-avatar" />
+                  <div className="doador-meta">
+                    <span>Doador responsável</span>
+                    <h4>{roupaSelecionada.vendedor === emailPrivado ? `${nomeUsuario} (Você)` : (roupaSelecionada.nomeVendedor || 'Usuário Reveste')}</h4>
+                  </div>
+                </div>
+                <div className="detalhes-acoes-footer">
+                  {pedidoNoCarrinho ? (
+                    <button className="btn-publicar btn-solicitado" disabled>Já Solicitado</button>
+                  ) : (
+                    <button onClick={() => handleSolicitarRoupa(roupaSelecionada)} className="btn-publicar" disabled={roupaSelecionada.vendedor === emailPrivado}>
+                      {roupaSelecionada.vendedor === emailPrivado ? 'Sua Doação' : 'Solicitar Roupa'}
+                    </button>
+                  )}
+                  <button onClick={() => {
+                    if(roupaSelecionada.vendedor === emailPrivado) {
+                      dispararNotificacao("Você não pode abrir um chat consigo mesmo.", "erro");
+                      return;
+                    }
+                    dispararNotificacao(`Iniciando chat...`, 'notificacao');
+                  }} className="btn-conversa-chat">
+                    <FiMessageSquare size={20} />
+                    <span>Conversar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADICIONAR DOAÇÃO */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <header className="modal-header">
+              <h2>Publicar Doação</h2>
+              <button onClick={() => setIsModalOpen(false)} className="close-modal-btn"><FiX size={22} /></button>
+            </header>
+            <form onSubmit={handlePublicar} className="modal-form">
+              <div className="foto-container" onClick={() => fileInputCriarRef.current?.click()}>
+                {fotoBase64 ? <img src={fotoBase64} alt="Preview" className="foto-preview" /> : (
+                  <div className="foto-placeholder">
+                    <FiCamera size={32} />
+                    <span>Selecionar Foto da Galeria</span>
+                  </div>
+                )}
+              </div>
+              <div className="input-group">
+                <label>Título da Peça / Descrição</label>
+                <input type="text" placeholder="Ex: Jaqueta Jeans destroyed vintage" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="modal-input" />
+              </div>
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Tamanho</label>
+                  <input type="text" placeholder="Ex: M, 42, G" value={tamanho} onChange={(e) => setTamanho(e.target.value)} className="modal-input" />
+                </div>
+                <div className="input-group" style={{ flex: 1.2 }}>
+                  <label>Categoria</label>
+                  <div className="categoria-badges-container" style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    {['Masculino', 'Feminino', 'Unissex'].map((cat) => (
+                      <button 
+                        type="button" key={cat} onClick={() => setCategoria(cat)}
+                        className={`categoria-badge-btn ${categoria === cat ? 'active' : ''}`}
+                        style={{
+                          flex: 1, padding: '8px 4px', borderRadius: '6px', border: 'none', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
+                          backgroundColor: categoria === cat ? '#3182ce' : '#2d3748', color: '#fff'
+                        }}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Tipo de Tecido</label>
+                  <input type="text" placeholder="Ex: Algodão, Jeans, Linho" value={tecido} onChange={(e) => setTecido(e.target.value)} className="modal-input" />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Estado de Conservação</label>
+                  <select value={estado} onChange={(e) => setEstado(e.target.value)} className="modal-input">
+                    <option value="Novo com etiqueta">Novo com etiqueta</option>
+                    <option value="Excelente estado">Excelente estado</option>
+                    <option value="Seminovo">Seminovo</option>
+                    <option value="Usado">Usado</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Marca (Opcional)</label>
+                  <input type="text" placeholder="Ex: Zara, Nike" value={marca} onChange={(e) => setMarca(e.target.value)} className="modal-input" />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Cor (Opcional)</label>
+                  <input type="text" placeholder="Ex: Preto, Azul" value={cor} onChange={(e) => setCor(e.target.value)} className="modal-input" />
+                </div>
+              </div>
+              <button type="submit" className="btn-publicar" style={{ marginTop: '12px' }}>Publicar Doação</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR DOAÇÃO COMPLETO */}
+      {isEditModalOpen && itemSendoEditado && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <header className="modal-header">
+              <h2>Editar Doação</h2>
+              <button onClick={() => setIsEditModalOpen(false)} className="close-modal-btn"><FiX size={22} /></button>
+            </header>
+            <form onSubmit={handleSalvarEdicao} className="modal-form">
+              <div className="foto-container" onClick={() => fileInputEditarRef.current?.click()} title="Mudar Foto">
+                <img src={itemSendoEditado.foto} alt="Preview" className="foto-preview" />
+                <div className="avatar-overlay-camera" style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', padding: '8px', borderRadius: '50%', color: '#fff' }}>
+                  <FiCamera size={16} />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label>Título da Peça / Descrição</label>
+                <input 
+                  type="text" value={itemSendoEditado.descricao} 
+                  onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, descricao: e.target.value })} 
+                  className="modal-input" 
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Tamanho</label>
+                  <input 
+                    type="text" value={itemSendoEditado.tamanho} 
+                    onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, tamanho: e.target.value })} 
+                    className="modal-input" 
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1.2 }}>
+                  <label>Categoria</label>
+                  <div className="categoria-badges-container" style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    {['Masculino', 'Feminino', 'Unissex'].map((cat) => (
+                      <button 
+                        type="button" key={cat} onClick={() => setItemSendoEditado({ ...itemSendoEditado, categoria: cat })}
+                        className={`categoria-badge-btn ${itemSendoEditado.categoria === cat ? 'active' : ''}`}
+                        style={{
+                          flex: 1, padding: '8px 4px', borderRadius: '6px', border: 'none', fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
+                          backgroundColor: itemSendoEditado.categoria === cat ? '#3182ce' : '#2d3748', color: '#fff'
+                        }}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Tipo de Tecido</label>
+                  <input 
+                    type="text" value={itemSendoEditado.tecido} 
+                    onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, tecido: e.target.value })} 
+                    className="modal-input" 
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Estado de Conservação</label>
+                  <select 
+                    value={itemSendoEditado.estado} 
+                    onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, estado: e.target.value })} 
+                    className="modal-input"
+                  >
+                    <option value="Novo com etiqueta">Novo com etiqueta</option>
+                    <option value="Excelente estado">Excelente estado</option>
+                    <option value="Seminovo">Seminovo</option>
+                    <option value="Usado">Usado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Marca</label>
+                  <input 
+                    type="text" value={itemSendoEditado.marca} 
+                    onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, marca: e.target.value })} 
+                    className="modal-input" 
+                  />
+                </div>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label>Cor</label>
+                  <input 
+                    type="text" value={itemSendoEditado.cor} 
+                    onChange={(e) => setItemSendoEditado({ ...itemSendoEditado, cor: e.target.value })} 
+                    className="modal-input" 
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn-publicar" style={{ marginTop: '12px', backgroundColor: '#2ecc71' }}>
+                Salvar Alterações
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+    {/* MENU INFERIOR */}
+      <nav className="bottom-nav">
+        <button onClick={() => setActiveTab('home')} className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}><FiHome size={24} /></button>
+        <button onClick={() => setActiveTab('itens')} className={`nav-item ${activeTab === 'itens' ? 'active' : ''}`}><FiLayers size={24} /></button>
+        <div className="plus-button-wrapper"><button onClick={() => setIsModalOpen(true)} className="nav-item-plus"><FiPlus size={28} /></button></div>
+        <button onClick={() => setActiveTab('carrinho')} className={`nav-item ${activeTab === 'carrinho' ? 'active' : ''}`}>
+          <FiShoppingBag size={24} />{carrinho.length > 0 && <span className="badge-carrinho-contador">{carrinho.length}</span>}
+        </button>
+        <button onClick={() => setActiveTab('perfil')} className={`nav-item ${activeTab === 'perfil' ? 'active' : ''}`}><FiUser size={24} /></button>
+      </nav>
+
+    </div>
+  );
+}
