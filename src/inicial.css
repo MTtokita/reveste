@@ -800,7 +800,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.bottom-nav-bar {
+.bottom-nav{
   position: fixed;
   bottom: 0;
   left: 0;
@@ -815,7 +815,7 @@
 }
 
 @media (max-width: 768px) {
-  .bottom-nav-bar {
+  .bottom-nav{
     display: flex !important; /* Força ela a continuar visível no celular */
   }
 }
