@@ -93,6 +93,19 @@ export default function Inicial({ userName: initialUserName, userEmail, userPhon
     return localStorage.getItem(`@reveste:${emailPrivado}:cpf`) || '';
   });
 
+  // ================= MODIFICAÇÃO ESSENCIAL AQUI =================
+  // Este useEffect garante que sempre que o componente iniciar ou o e-mail mudar, 
+  // ele vai buscar o nome atualizado do localStorage de forma prioritária.
+  useEffect(() => {
+    const nomeSalvo = localStorage.getItem(`@reveste:${emailPrivado}:username`);
+    if (nomeSalvo) {
+      setNomeUsuario(nomeSalvo);
+    } else if (initialUserName) {
+      setNomeUsuario(initialUserName);
+    }
+  }, [emailPrivado, initialUserName]);
+  // ==============================================================
+
   const [banners] = useState([
     'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=1000',
     'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=1000',
