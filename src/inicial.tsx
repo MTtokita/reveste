@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { 
   FiLogOut, FiLayers, FiBell, FiUser, 
@@ -7,8 +8,8 @@ import {
   FiSettings, FiSearch 
 } from 'react-icons/fi';
 import './inicial.css'; 
-import { db } from './firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, onSnapshot, where, serverTimestamp, updateDoc,setDoc,getDoc } from 'firebase/firestore';
 
 interface DashboardProps {
   userName: string; 
@@ -17,6 +18,20 @@ interface DashboardProps {
   userPhoto?: string; 
   onLogout: () => void;
   onUpdateUser: (newName: string, extraData?: { fotoPerfil?: string; doacoes?: number }) => Promise<void>; 
+}
+
+interface Mensagem {
+  id: string;
+  texto: string;
+  remetente: string;
+  timestamp: any;
+}
+
+interface Conversa {
+  id: string;
+  nome: string;
+  foto?: string;
+  usuarioEmail: string; 
 }
 
 interface Roupa {
@@ -53,7 +68,8 @@ interface ChatSimplificado {
   usuarioNome: string;
   usuarioFoto: string;
   ultimaMensagem: string;
-  horario: string;
+  usuarioEmail: string;
+  horario: any;
 }
 
 export default function Inicial({ userName, userEmail, userPhone = '', userPhoto = '', onLogout, onUpdateUser }: DashboardProps) {
@@ -62,6 +78,12 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [roupaSelecionada, setRoupaSelecionada] = useState<Roupa | null>(null);
+  const [textoDigitado, setTextoDigitado] = useState('');
+ 
+const [mensagens, setMensagens] = useState<any[]>([]);
+//const [mensagensDaConversa, setMensagensDaConversa] = useState<Mensagem[]>([]);
+const [conversaAtiva, setConversaAtiva] = useState<Conversa | null>(null);
+//const [textoDigitado, setTextoDigitado] = useState('');
 
   // --- BUSCA E SIDEBAR ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -113,10 +135,162 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
   const [listaRoupas, setListaRoupas] = useState<Roupa[]>([]);
   const [carrinho, setCarrinho] = useState<Pedido[]>([]);
 
-  const [conversas] = useState<ChatSimplificado[]>([
-    { id: 'c1', usuarioNome: 'Carlos S.', usuarioFoto: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150', ultimaMensagem: 'Consigo te entregar na estação amanhã?', horario: '14:32' },
-    { id: 'c2', usuarioNome: 'Ana Costa', usuarioFoto: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150', ultimaMensagem: 'A calça já foi postada nos correios!', horario: 'Ontem' }
-  ]);
+const [conversas, setConversas] = useState<ChatSimplificado[]>([]);
+
+const [cep, setCep] = useState('');
+
+/* =====================================================
+   🔥 FUNÇÃO: CRIAR OU BUSCAR CONVERSA
+===================================================== */
+const criarOuBuscarConversa = async (
+  userEmail: string,
+  userName: string,
+  userPhoto: string,
+  emailDestino: string,
+  nomeDestino: string,
+  fotoDestino: string
+) => {
+  try {
+    // 1. procura conversa existente
+    const q = query(
+      collection(db, "conversas"),
+      where("participants", "array-contains", userEmail)
+    );
+
+    const snapshot = await getDocs(q);
+
+    const existente = snapshot.docs.find(doc => {
+      const data = doc.data();
+      return data.participants.includes(emailDestino);
+    });
+
+    if (existente) {
+      return existente.id;
+    }
+
+    // 2. cria nova conversa
+    const novaConversa = await addDoc(collection(db, "conversas"), {
+      participants: [userEmail, emailDestino],
+
+      senderEmail: userEmail,
+      senderName: userName,
+      senderPhoto: userPhoto,
+
+      receiverEmail: emailDestino,
+      receiverName: nomeDestino,
+      receiverPhoto: fotoDestino,
+
+      ultimaMensagem: "",
+      ultimoHorario: new Date()
+    });
+
+    return novaConversa.id;
+
+  } catch (error) {
+    console.error("Erro ao criar/buscar conversa:", error);
+    return null;
+  }
+};
+
+
+/* =====================================================
+   🔥 ENVIAR MENSAGEM (AGORA CRIA CONVERSA SE PRECISAR)
+===================================================== */
+const enviarMensagem = async () => {
+  if (!textoDigitado.trim() || !conversaAtiva) return;
+
+  try {
+    const mensagemRef = await addDoc(
+      collection(db, "conversas", conversaAtiva.id, "mensagens"),
+      {
+        texto: textoDigitado,
+        remetente: userEmail, // 👈 PADRONIZADO
+        createdAt: serverTimestamp()
+      }
+    );
+
+    // 🔥 Atualiza a conversa (IMPORTANTE PRA LISTA)
+    await updateDoc(doc(db, "conversas", conversaAtiva.id), {
+      ultimaMensagem: textoDigitado,
+      ultimoHorario: serverTimestamp()
+    });
+
+    setTextoDigitado('');
+
+  } catch (error) {
+    console.error("Erro ao enviar mensagem:", error);
+  }
+};
+
+/* =====================================================
+   🔥 LISTENER DE MENSAGENS
+===================================================== */
+useEffect(() => {
+  if (!conversaAtiva) return;
+
+  const q = query(
+    collection(db, "conversas", conversaAtiva.id, "mensagens"),
+    orderBy("createdAt", "asc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const lista: Mensagem[] = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as Omit<Mensagem, "id">)
+    }));
+
+    setMensagens(lista);
+  });
+
+  return () => unsubscribe();
+}, [conversaAtiva]);
+
+
+/* =====================================================
+   🔥 LISTENER DE CONVERSAS (LISTA LATERAL)
+===================================================== */
+useEffect(() => {
+  if (!userEmail) return;
+
+  const q = query(
+    collection(db, "conversas"),
+    where("participants", "array-contains", userEmail),
+    orderBy("ultimoHorario", "desc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const lista = snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+
+      const isSender = data.senderEmail === userEmail;
+
+      const usuarioNome = isSender
+        ? data.receiverName
+        : data.senderName;
+
+      const usuarioFoto = isSender
+        ? data.receiverPhoto
+        : data.senderPhoto;
+
+        const usuarioEmail = isSender
+       ? data.receiverEmail
+       : data.senderEmail;
+
+      return {
+        id: docSnap.id,
+        usuarioNome,
+        usuarioFoto,
+        usuarioEmail,
+        ultimaMensagem: data.ultimaMensagem || "",
+        horario: data.ultimoHorario || ""
+      };
+    });
+
+    setConversas(lista);
+  });
+
+  return () => unsubscribe();
+}, [userEmail]);
 
   // BANCO DE DADOS: Busca as roupas globais do Firebase assim que entra no app
   useEffect(() => {
@@ -173,9 +347,42 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
     }
   };
 
-  const salvarDadosPrivados = () => {
-    dispararNotificacao('Funcionalidade integrada ao banco de dados.', 'sucesso');
+ const salvarDadosPrivados = async () => {
+  if (!emailPrivado) return;
+
+  try {
+    const userRef = doc(db, "usuarios", emailPrivado);
+    
+    // Criamos um objeto "limpo" apenas com o que existe
+    const dadosParaSalvar = {
+      cpf: cpf || "",
+      endereco: endereco || "",
+      telefone: telefone || ""
+    };
+
+    // Usamos setDoc com merge: true para não apagar o resto do documento
+    await setDoc(userRef, dadosParaSalvar, { merge: true });
+    
+    dispararNotificacao("Informações salvas com sucesso!", "sucesso");
+  } catch (error) {
+    console.error("Erro ao salvar no Firebase:", error);
+    dispararNotificacao("Erro ao salvar. Verifique o console.", "erro");
+  }
+};
+
+useEffect(() => {
+  const carregarDadosPrivados = async () => {
+    if (!emailPrivado) return;
+    const docSnap = await getDoc(doc(db, "usuarios", emailPrivado));
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      setCpf(data.cpf || "");
+      setEndereco(data.endereco || "");
+      setTelefone(data.telefone || "");
+    }
   };
+  carregarDadosPrivados();
+}, [emailPrivado]);
 
   useEffect(() => {
     if (activeTab !== 'home' || !carrosselRef.current) return;
@@ -289,25 +496,75 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
     }
   };
 
-  const handleSolicitarRoupa = (roupa: Roupa) => {
-    const jaSolicitado = carrinho.some(pedido => pedido.roupa.id === roupa.id);
-    if (jaSolicitado) {
-      dispararNotificacao('Você já possui esta peça adicionada à sua Sacola.', 'erro');
-      return;
-    }
+  const handleSolicitarRoupa = async (roupa: Roupa) => {
 
-    const novoPedido: Pedido = {
-      id: `ped-${Date.now()}`,
-      roupa: roupa,
-      dataSolicitacao: new Date().toLocaleDateString('pt-BR'),
-      tempoEstimado: `${Math.floor(Math.random() * 4) + 2} a ${Math.floor(Math.random() * 4) + 6} dias úteis`
-    };
+      const temCep = /\d{5}-?\d{3}/.test(endereco);
 
-    setCarrinho([novoPedido, ...carrinho]);
+  if (!temCep) {
+    dispararNotificacao('Informe um CEP válido antes de fazer um pedido.', 'erro');
+    return;
+  }
+
+
+  const jaSolicitado = carrinho.some(pedido => pedido.roupa.id === roupa.id);
+  if (jaSolicitado) {
+    dispararNotificacao('Você já possui esta peça na sua Sacola.', 'erro');
+    return;
+  }
+
+  const novoPedido = {
+    roupa: roupa,
+    usuarioEmail: emailPrivado, 
+     cep: endereco,
+     cpf: cpf,
+     telefone: telefone,
+    dataSolicitacao: new Date().toISOString(),
+    tempoEstimado: `${Math.floor(Math.random() * 4) + 2} a ${Math.floor(Math.random() * 4) + 6} dias úteis`
+  };
+
+  try {
+    // Agora salvamos no Firestore
+    await addDoc(collection(db, "pedidos"), novoPedido);
+    
+    // Atualiza a tela após salvar
+    setCarrinho(prev => [
+  {
+    ...novoPedido,
+    id: crypto.randomUUID() // ou Date.now().toString()
+  } as Pedido,
+  ...prev
+]);
     setRoupaSelecionada(null); 
     setActiveTab('carrinho'); 
     dispararNotificacao('Pedido solicitado com sucesso!', 'sucesso');
+  } catch (error) {
+    console.error("Erro ao salvar pedido:", error);
+    dispararNotificacao('Erro ao salvar pedido no servidor.', 'erro');
+  }
+
+};
+
+useEffect(() => {
+  const carregarPedidos = async () => {
+    if (!emailPrivado) return;
+    
+    try {
+      const q = query(collection(db, "pedidos"), where("usuarioEmail", "==", emailPrivado));
+      const querySnapshot = await getDocs(q);
+      
+      const pedidosCarregados: Pedido[] = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Pedido[];
+      
+      setCarrinho(pedidosCarregados);
+    } catch (error) {
+      console.error("Erro ao carregar pedidos:", error);
+    }
   };
+
+  carregarPedidos();
+}, [emailPrivado]);
 
   // BANCO DE DADOS: Remove o documento de doação direto do Cloud Firestore
   const handleDeletarRoupa = async (id: string) => {
@@ -352,8 +609,11 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
   const meusItens = listaRoupas.filter(roupa => roupa.vendedor === emailPrivado).filter(filtroPorLetras);
   const itensParaVoce = [...listaRoupas].sort(() => 0.5 - Math.random()).filter(filtroPorLetras);
   const pedidoNoCarrinho = carrinho.find(p => p.roupa.id === roupaSelecionada?.id);
+
+  console.log("CONVERSAS:", conversas);
   
   return (
+    
     <div className="dashboard-container" style={{ position: 'relative' }}>
       
       {/* BARRA LATERAL (SIDEBAR) */}
@@ -378,15 +638,7 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
               </button>
             </div>
             
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-              <img src={fotoUsuario} alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
-              <div>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#a0aec0' }}>Logado como</p>
-                <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{emailPrivado}</p>
-              </div>
-            </div>
-
-            <button 
+             <button 
               onClick={() => { setIsSidebarOpen(false); onLogout(); }} 
               className="logout-btn"
               style={{ 
@@ -398,6 +650,16 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
               <span>Sair</span>
               <FiLogOut size={18} /> 
             </button>
+
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+              <img src={fotoUsuario} alt="Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+              <div>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#a0aec0' }}>Logado como</p>
+                <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 'bold', wordBreak: 'break-all' }}>{emailPrivado}</p>
+              </div>
+            </div>
+
+            
           </div>
         </>
       )}
@@ -639,29 +901,74 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
               </div>
             )}
 
-            {subAbaPerfil === 'chats' && (
-              <div className="sub-aba-content animate-fade">
-                <div className="lista-conversas-container">
-                  {conversas.map(chat => (
-                    <div key={chat.id} className="conversa-item-linha" onClick={() => dispararNotificacao(`Abrindo chat com ${chat.usuarioNome}...`, 'notificacao')}>
-                      <img src={chat.usuarioFoto} alt={chat.usuarioNome} className="conversa-avatar" />
-                      <div className="conversa-conteudo-texto">
-                        <div className="conversa-header-linha">
-                          <h4>{chat.usuarioNome}</h4>
-                          <span className="conversa-tempo">{chat.horario}</span>
-                        </div>
-                        <p className="conversa-preview-msg">{chat.ultimaMensagem}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+           {subAbaPerfil === 'chats' && (
+  <div className="sub-aba-content">
+
+    {conversaAtiva ? (
+      <div>
+
+        <button onClick={() => setConversaAtiva(null)}>
+          Voltar
+        </button>
+
+        <h3>{conversaAtiva.nome}</h3>
+
+        <div>
+        {mensagens.map((msg) => (
+  <div
+    key={msg.id}
+    className={`msg-container ${
+      msg.remetente === userEmail ? 'propria' : 'outra'
+    }`}
+  >
+    <p className="msg-texto">{msg.texto}</p>
+  </div>
+))}
+        </div>
+
+        <input 
+  type="text"
+  value={textoDigitado} // 👈 ESSENCIAL
+  onChange={(e) => setTextoDigitado(e.target.value)}
+  placeholder="Digite sua mensagem..."
+  className="input-chat-estilizado"
+  onKeyDown={(e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      enviarMensagem();
+    }
+  }}
+/>
+
+      </div>
+    ) : (
+
+      <div>
+        {conversas.map(chat => (
+          <div
+            key={chat.id}
+            onClick={() =>
+              setConversaAtiva({
+                id: chat.id,
+                nome: chat.usuarioNome,
+                usuarioEmail: chat.usuarioEmail
+              })
+            }
+          >
+            <p>{chat.usuarioNome}</p>
+          </div>
+        ))}
+      </div>
+
+    )}
+
+  </div>
+)}
           </section>
         )}
       </main>
 
-      {/* MODAL: DETALHES DA ROUPE */}
+      {/* MODAL: DETALHES DA ROUPA */}
         {roupaSelecionada && (
         <div className="modal-overlay">
           <div className="modal-content detalhes-modal-content">
@@ -711,16 +1018,50 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
                       {roupaSelecionada.vendedor === emailPrivado ? 'Sua Doação' : 'Solicitar Roupa'}
                     </button>
                   )}
-                  <button onClick={() => {
-                    if(roupaSelecionada.vendedor === emailPrivado) {
-                      dispararNotificacao("Você não pode abrir um chat consigo mesmo.", "erro");
-                      return;
-                    }
-                    dispararNotificacao(`Iniciando chat...`, 'notificacao');
-                  }} className="btn-conversa-chat">
-                    <FiMessageSquare size={20} />
-                    <span>Conversar</span>
-                  </button>
+                  <button 
+  onClick={() => {
+
+    // 🔒 Garantir que existe roupa selecionada
+    if (!roupaSelecionada) return;
+
+    // 1. Impedir chat consigo mesmo
+    if (roupaSelecionada.vendedor === emailPrivado) {
+      dispararNotificacao("Você não pode abrir um chat consigo mesmo.", "erro");
+      return;
+    }
+
+    // 2. Criar ID único da conversa
+    const conversaId = [emailPrivado, roupaSelecionada.vendedor]
+      .sort()
+      .join("_");
+
+    // 3. Definir conversa ativa (CORRIGIDO)
+    setConversaAtiva({
+      id: conversaId,
+      nome: roupaSelecionada.nomeVendedor || 'Usuário',
+      foto: roupaSelecionada.fotoVendedor || '', // 👈 evita erro de undefined
+      usuarioEmail: roupaSelecionada.vendedor
+    });
+
+    // 4. Navegação
+    setActiveTab('perfil');
+    setSubAbaPerfil('chats');
+
+    // 5. Fechar modal
+    setRoupaSelecionada(null);
+
+    // 6. Notificação segura
+    dispararNotificacao(
+      `Abrindo chat com ${roupaSelecionada.nomeVendedor || 'Usuário'}...`,
+      'notificacao'
+    );
+
+  }} 
+  className="btn-conversa-chat"
+>
+  <FiMessageSquare size={20} />
+  <span>Conversar</span>
+</button>
                 </div>
               </div>
             </div>
@@ -781,7 +1122,6 @@ export default function Inicial({ userName, userEmail, userPhone = '', userPhoto
                   <label>Estado de Conservação</label>
                   <select value={estado} onChange={(e) => setEstado(e.target.value)} className="modal-input">
                     <option value="Novo com etiqueta">Novo com etiqueta</option>
-                    <option value="Excelente estado">Excelente estado</option>
                     <option value="Seminovo">Seminovo</option>
                     <option value="Usado">Usado</option>
                   </select>

@@ -823,3 +823,66 @@
 .dashboard-content {
   padding-bottom: 80px; /* Margem de segurança para o conteúdo scrollar acima da barra */
 }
+
+.area-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* Centraliza tudo horizontalmente */
+  width: 100%;
+  padding: 2px;
+}
+
+.perfil-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.avatar-chat {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid #3182ce; /* Moldura azul */
+  object-fit: cover;
+  margin-bottom: 8px;
+}
+
+.chat-input-container {
+  width: 100%;
+  max-width: 500px; /* Limita a largura para ficar elegante */
+  margin-top: 15px;
+}
+
+.input-chat-estilizado {
+  width: 100%;
+  padding: 15px;
+  border-radius: 25px;
+  border: 1px solid #ccc;
+  background-color: #ffffff; /* Fundo branco bem visível */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  outline: none;
+}
+
+.mensagens-lista {
+  width: 100%;
+  max-width: 500px;
+  height: 500px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 15px;
+  padding: 15px;
+  background: #f9f9f9;
+}
+
+/* Alinhamento de mensagens */
+.msg-container { margin: 10px 0; }
+.propria { text-align: right; }
+.msg-texto {
+  display: inline-block;
+  padding: 10px 15px;
+  border-radius: 15px;
+  background: #3182ce;
+  color: white;
+}
+.outra .msg-texto { background: #e2e8f0; color: #333; }
